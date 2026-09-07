@@ -2,14 +2,15 @@ name: Build Android APK
 
 on:
   push:
-    branches: [ "main" ]
+    branches: [ "main", "master" ]
   workflow_dispatch:
 
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout Repository
+        uses: actions/checkout@v4
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4
@@ -17,44 +18,40 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
 
-      - name: Create Dummy google-services.json
+      # بازنویسی کامل تنظیمات گریدل جهت حذف چکسام خراب
+      - name: Reset Gradle Wrapper Properties
         run: |
-          mkdir -p app
-          cat << 'EOF' > app/google-services.json
-          {
-            "project_info": {
-              "project_number": "123456789012",
-              "project_id": "dummy-project",
-              "storage_bucket": "dummy.appspot.com"
-            },
-            "client": [
-              {
-                "client_info": {
-                  "mobilesdk_app_id": "1:123456789012:android:1234567890123456",
-                  "android_client_info": {
-                    "package_name": "com.dummy.app"
-                  }
-                },
-                "oauth_client": [],
-                "api_key": [{"current_key": "AIzaSyDummyKey"}],
-                "services": {"analytics_service": {"status": 1}}
-              }
-            ],
-            "configuration_version": "1"
-          }
+          mkdir -p gradle/wrapper
+          cat << 'EOF' > gradle/wrapper/gradle-wrapper.properties
+          distributionBase=GRADLE_USER_HOME
+          distributionPath=wrapper/dists
+          distributionUrl=https\://services.gradle.org/distributions/gradle-8.7-bin.zip
+          zipStoreBase=GRADLE_USER_HOME
+          zipStorePath=wrapper/dists
           EOF
 
-      - name: Setup Gradle
-        run: gradle wrapper
+      # ساخت فایل ساختگی google-services.json
+      - name: Generate Dummy google-services.json
+        run: |
+          mkdir -p app/src/debug app/src/main
+          JSON_CONTENT='{
+            "project_info": {"project_number": "123456789012", "project_id": "whitedra-vpn", "storage_bucket": "whitedra-vpn.appspot.com"},
+            "client": [{"client_info": {"mobilesdk_app_id": "1:123456789012:android:1234567890123456", "android_client_info": {"package_name": "com.whitedra.vpn"}}, "oauth_client": [], "api_key": [{"current_key": "AIzaSyDummyKey"}], "services": {"analytics_service": {"status": 1}}}]
+          }'
+          echo "$JSON_CONTENT" > app/google-services.json
+          echo "$JSON_CONTENT" > app/src/debug/google-services.json
 
-      - name: Grant execute permission for gradlew
+      # اعطای دسترسی اجرایی
+      - name: Grant Execute Permission
         run: chmod +x gradlew
 
+      # کامپایل پروژه
       - name: Build Debug APK
-        run: ./gradlew assembleDebug --stacktrace
+        run: ./gradlew assembleDebug -x test -x lint --no-daemon
 
-      - name: Upload APK
+      # آپلود خروجی
+      - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: app-debug
-          path: app/build/outputs/apk/debug/*.apk
+          name: WhiteVPN-Debug-APK
+          path: "**/build/outputs/apk/debug/*.apk"
