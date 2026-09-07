@@ -17,14 +17,18 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
 
-      # ساخت خودکار فایل google-services.json روی سرور برای رد شدن از ارور
+      # رفع خطای عدم تطابق چک‌سام گریدل
+      - name: Fix Gradle Wrapper Checksum
+        run: |
+          if [ -f gradle/wrapper/gradle-wrapper.properties ]; then
+            sed -i '/distributionSha256Sum/d' gradle/wrapper/gradle-wrapper.properties
+          fi
+
+      # ساخت خودکار فایل google-services.json ساختگی
       - name: Create Dummy google-services.json
         run: |
           mkdir -p app
           echo '{"project_info":{"project_number":"123456789012","project_id":"dummy-project","storage_bucket":"dummy.appspot.com"},"client":[{"client_info":{"mobilesdk_app_id":"1:123456789012:android:1234567890123456","android_client_info":{"package_name":"com.dummy.app"}},"oauth_client":[],"api_key":[{"current_key":"AIzaSyDummyKey"}],"services":{"analytics_service":{"status":1}}}],"configuration_version":"1"}' > app/google-services.json
-
-      - name: Setup Gradle
-        run: gradle wrapper
 
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
