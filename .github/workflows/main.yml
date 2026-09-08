@@ -1,0 +1,26 @@
+      # تزریق فایل ساختگی google-services با پشتیبانی از نسخه Debug
+      - name: Inject Dummy google-services.json
+        run: |
+          mkdir -p app/src/debug app/src/main app
+          JSON_CONTENT='{
+            "project_info": {"project_number": "123456789012", "project_id": "whitedra-vpn", "storage_bucket": "whitedra-vpn.appspot.com"},
+            "client": [
+              {
+                "client_info": {"mobilesdk_app_id": "1:123456789012:android:1234567890123456", "android_client_info": {"package_name": "com.whitedra.vpn"}},
+                "oauth_client": [],
+                "api_key": [{"current_key": "AIzaSyDummyKeyForBuildOnly"}],
+                "services": {"analytics_service": {"status": 1}}
+              },
+              {
+                "client_info": {"mobilesdk_app_id": "1:123456789012:android:1234567890123457", "android_client_info": {"package_name": "com.whitedra.vpn.debug"}},
+                "oauth_client": [],
+                "api_key": [{"current_key": "AIzaSyDummyKeyForBuildOnly"}],
+                "services": {"analytics_service": {"status": 1}}
+              }
+            ],
+            "configuration_version": "1"
+          }'
+          echo "$JSON_CONTENT" > google-services.json
+          echo "$JSON_CONTENT" > app/google-services.json
+          echo "$JSON_CONTENT" > app/src/debug/google-services.json
+          echo "$JSON_CONTENT" > app/src/main/google-services.json
