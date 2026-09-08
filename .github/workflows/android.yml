@@ -18,11 +18,6 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
 
-      - name: Setup Go Environment
-        uses: actions/setup-go@v5
-        with:
-          go-version: '>=1.21.0'
-
       - name: Accept SDK Licenses
         run: yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses || true
 
@@ -30,47 +25,17 @@ jobs:
         run: |
           find . -name "gradle-wrapper.properties" -exec sed -i '/distributionSha256Sum/d' {} +
 
-      - name: Setup Debug Keystore
-        run: |
-          mkdir -p ~/.android
-          keytool -genkey -v -keystore ~/.android/debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US" || true
-
-      # استخراج خودکار نام پکیج واقعی پروژه و تزریق فایل google-services
-      - name: Inject Dynamic google-services.json
+      - name: Inject Dummy google-services.json
         run: |
           PKG=$(grep -oP '(namespace|applicationId)\s*=\s*"\K[^"]+' app/build.gradle.kts 2>/dev/null | head -n 1)
-          if [ -z "$PKG" ]; then
-            PKG="com.whitedra.vpn"
-          fi
-          echo "Detected Package Name: $PKG"
-
+          if [ -z "$PKG" ]; then PKG="com.whitedra.vpn"; fi
           mkdir -p app app/src/debug app/src/main
           cat << EOF > app/google-services.json
           {
-            "project_info": {
-              "project_number": "123456789012",
-              "project_id": "whitedra-vpn",
-              "storage_bucket": "whitedra-vpn.appspot.com"
-            },
+            "project_info": {"project_number": "123456789012", "project_id": "whitedra-vpn", "storage_bucket": "whitedra-vpn.appspot.com"},
             "client": [
-              {
-                "client_info": {
-                  "mobilesdk_app_id": "1:123456789012:android:1234567890123456",
-                  "android_client_info": { "package_name": "$PKG" }
-                },
-                "oauth_client": [],
-                "api_key": [{ "current_key": "AIzaSyDummyKey" }],
-                "services": { "analytics_service": { "status": 1 } }
-              },
-              {
-                "client_info": {
-                  "mobilesdk_app_id": "1:123456789012:android:6543210987654321",
-                  "android_client_info": { "package_name": "${PKG}.debug" }
-                },
-                "oauth_client": [],
-                "api_key": [{ "current_key": "AIzaSyDummyKey" }],
-                "services": { "analytics_service": { "status": 1 } }
-              }
+              {"client_info": {"mobilesdk_app_id": "1:123456789012:android:1234567890123456", "android_client_info": {"package_name": "$PKG"}}, "oauth_client": [], "api_key": [{"current_key": "AIzaSyDummyKey"}], "services": {"analytics_service": {"status": 1}}},
+              {"client_info": {"mobilesdk_app_id": "1:123456789012:android:6543210987654321", "android_client_info": {"package_name": "${PKG}.debug"}}, "oauth_client": [], "api_key": [{"current_key": "AIzaSyDummyKey"}], "services": {"analytics_service": {"status": 1}}}
             ],
             "configuration_version": "1"
           }
@@ -81,18 +46,23 @@ jobs:
       - name: Grant Exec Permissions
         run: chmod +x gradlew || true
 
-      # ساخت کامل بدون غیرفعال کردن processDebugGoogleServices
       - name: Build Debug APK
-        run: |
-          ./gradlew assembleDebug \
-            -Pandroid.injected.signing.store.file=$HOME/.android/debug.keystore \
-            -Pandroid.injected.signing.store.password=android \
-            -Pandroid.injected.signing.key.alias=androiddebugkey \
-            -Pandroid.injected.signing.key.password=android \
-            -x test -x lint -Pandroid.lint.abortOnError=false --no-daemon
+        run: ./gradlew assembleDebug -x test -x lint -Pandroid.lint.abortOnError=false --no-daemon
 
-      - name: Upload APK Artifact
+      # ترازسازی ساختار فایل و امضای دقیق V2/V3 جهت رفع ارور App Not Installed
+      - name: Sign & Align APK
+        run: |
+          BUILD_TOOLS=$(ls -d $ANDROID_HOME/build-tools/* | tail -n 1)
+          ORIGINAL_APK=$(find app/build/outputs/apk/debug/ -name "*.apk" | head -n 1)
+          
+          keytool -genkey -v -keystore debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US" || true
+          
+          $BUILD_TOOLS/zipalign -v -p 4 "$ORIGINAL_APK" WhiteVPN-Aligned.apk
+          $BUILD_TOOLS/apksigner sign --ks debug.keystore --ks-pass pass:android --key-pass pass:android --ks-key-alias androiddebugkey --out WhiteVPN-Signed.apk WhiteVPN-Aligned.apk
+
+      - name: Upload Signed APK
         uses: actions/upload-artifact@v4
         with:
-          name: WhiteVPN-Debug-APK
-          path: "**/build/outputs/apk/debug/*.apk"
+          name: WhiteVPN-Signed-APK
+          path: WhiteVPN-Signed.apk
+          
