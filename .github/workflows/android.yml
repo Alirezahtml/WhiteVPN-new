@@ -17,25 +17,21 @@ jobs:
         with:
           java-version: '17'
           distribution: 'temurin'
+          cache: 'gradle'
 
-      - name: Accept Android SDK Licenses
-        run: yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses || true
-
-      # حذف هشدار چکسام از تمام فایل‌های wrapper
-      - name: Remove Gradle Checksum Validation
+      - name: Setup Android SDK & local.properties
         run: |
-          find . -name "gradle-wrapper.properties" -exec sed -i '/distributionSha256Sum/d' {} +
+          echo "sdk.dir=$ANDROID_HOME" > local.properties
+          yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses || true
 
-      # ساخت کی‌استور دیباگ جهت امضای استاندارد
-      - name: Generate Debug Keystore
+      - name: Fix gradlew Line Endings & Exec Permissions
         run: |
-          mkdir -p ~/.android
-          keytool -genkey -v -keystore ~/.android/debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US" || true
+          sed -i -e 's/\r$//' gradlew
+          chmod +x gradlew
 
-      # تزریق فایل ساختگی google-services به تمامی پوشه‌های احتمالی
       - name: Inject Dummy google-services.json
         run: |
-          mkdir -p app/src/debug app/src/main
+          mkdir -p app/src/debug app/src/main app
           JSON_CONTENT='{
             "project_info": {"project_number": "123456789012", "project_id": "whitedra-vpn", "storage_bucket": "whitedra-vpn.appspot.com"},
             "client": [
@@ -51,16 +47,19 @@ jobs:
           echo "$JSON_CONTENT" > google-services.json
           echo "$JSON_CONTENT" > app/google-services.json
           echo "$JSON_CONTENT" > app/src/debug/google-services.json
+          echo "$JSON_CONTENT" > app/src/main/google-services.json
 
-      - name: Grant Exec Permissions
-        run: chmod +x gradlew || true
+      - name: Generate Debug Keystore
+        run: |
+          mkdir -p ~/.android
+          keytool -genkey -v -keystore ~/.android/debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US" || true
 
-      # کامپایل نهایی با رد کردن تست‌ها و لینت جهت جلوگیری از استپ شدن
       - name: Build Debug APK
         run: ./gradlew assembleDebug -x test -x lint -Pandroid.lint.abortOnError=false --stacktrace --no-daemon
 
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
+        if: always()
         with:
           name: WhiteVPN-Debug-APK
           path: "**/build/outputs/apk/debug/*.apk"
