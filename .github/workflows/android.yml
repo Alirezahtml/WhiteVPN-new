@@ -9,7 +9,7 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout Code
+      - name: Checkout Repository
         uses: actions/checkout@v4
 
       - name: Set up JDK 17
@@ -18,47 +18,38 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
 
-      - name: Accept Android SDK Licenses
-        run: yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses || true
-
-      # حذف هشدار چکسام از تمام فایل‌های wrapper
-      - name: Remove Gradle Checksum Validation
+      # بازنویسی کامل تنظیمات گریدل جهت حذف چکسام خراب
+      - name: Reset Gradle Wrapper Properties
         run: |
-          find . -name "gradle-wrapper.properties" -exec sed -i '/distributionSha256Sum/d' {} +
+          mkdir -p gradle/wrapper
+          cat << 'EOF' > gradle/wrapper/gradle-wrapper.properties
+          distributionBase=GRADLE_USER_HOME
+          distributionPath=wrapper/dists
+          distributionUrl=https\://services.gradle.org/distributions/gradle-8.7-bin.zip
+          zipStoreBase=GRADLE_USER_HOME
+          zipStorePath=wrapper/dists
+          EOF
 
-      # ساخت کی‌استور دیباگ جهت امضای استاندارد
-      - name: Generate Debug Keystore
-        run: |
-          mkdir -p ~/.android
-          keytool -genkey -v -keystore ~/.android/debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US" || true
-
-      # تزریق فایل ساختگی google-services به تمامی پوشه‌های احتمالی
-      - name: Inject Dummy google-services.json
+      # ساخت فایل ساختگی google-services.json
+      - name: Generate Dummy google-services.json
         run: |
           mkdir -p app/src/debug app/src/main
           JSON_CONTENT='{
             "project_info": {"project_number": "123456789012", "project_id": "whitedra-vpn", "storage_bucket": "whitedra-vpn.appspot.com"},
-            "client": [
-              {
-                "client_info": {"mobilesdk_app_id": "1:123456789012:android:1234567890123456", "android_client_info": {"package_name": "com.whitedra.vpn"}},
-                "oauth_client": [],
-                "api_key": [{"current_key": "AIzaSyDummyKeyForBuildOnly"}],
-                "services": {"analytics_service": {"status": 1}}
-              }
-            ],
-            "configuration_version": "1"
+            "client": [{"client_info": {"mobilesdk_app_id": "1:123456789012:android:1234567890123456", "android_client_info": {"package_name": "com.whitedra.vpn"}}, "oauth_client": [], "api_key": [{"current_key": "AIzaSyDummyKey"}], "services": {"analytics_service": {"status": 1}}}]
           }'
-          echo "$JSON_CONTENT" > google-services.json
           echo "$JSON_CONTENT" > app/google-services.json
           echo "$JSON_CONTENT" > app/src/debug/google-services.json
 
-      - name: Grant Exec Permissions
-        run: chmod +x gradlew || true
+      # اعطای دسترسی اجرایی
+      - name: Grant Execute Permission
+        run: chmod +x gradlew
 
-      # کامپایل نهایی با رد کردن تست‌ها و لینت جهت جلوگیری از استپ شدن
+      # کامپایل پروژه
       - name: Build Debug APK
-        run: ./gradlew assembleDebug -x test -x lint -Pandroid.lint.abortOnError=false --stacktrace --no-daemon
+        run: ./gradlew assembleDebug -x test -x lint --no-daemon
 
+      # آپلود خروجی
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
