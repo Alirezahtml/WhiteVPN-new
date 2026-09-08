@@ -18,35 +18,30 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
 
-      - name: Accept Android SDK Licenses
+      - name: Setup Go Environment
+        uses: actions/setup-go@v5
+        with:
+          go-version: '>=1.21.0'
+
+      - name: Accept SDK Licenses
         run: yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses || true
 
-      - name: Remove Gradle Checksum Validation
+      - name: Clean Gradle Checksum
         run: |
           find . -name "gradle-wrapper.properties" -exec sed -i '/distributionSha256Sum/d' {} +
 
-      # ساخت کی‌استور دیباگ و کپی در مسیرهای احتمالی پروژه
-      - name: Generate Debug Keystore
+      # ساخت کی‌استور و تزریق مستقیم به تنظیمات گریدل
+      - name: Setup Debug Keystore
         run: |
           mkdir -p ~/.android
           keytool -genkey -v -keystore ~/.android/debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US" || true
-          cp ~/.android/debug.keystore ./debug.keystore || true
-          cp ~/.android/debug.keystore app/debug.keystore || true
 
       - name: Inject Dummy google-services.json
         run: |
           mkdir -p app/src/debug app/src/main
           JSON_CONTENT='{
             "project_info": {"project_number": "123456789012", "project_id": "whitedra-vpn", "storage_bucket": "whitedra-vpn.appspot.com"},
-            "client": [
-              {
-                "client_info": {"mobilesdk_app_id": "1:123456789012:android:1234567890123456", "android_client_info": {"package_name": "com.whitedra.vpn"}},
-                "oauth_client": [],
-                "api_key": [{"current_key": "AIzaSyDummyKeyForBuildOnly"}],
-                "services": {"analytics_service": {"status": 1}}
-              }
-            ],
-            "configuration_version": "1"
+            "client": [{"client_info": {"mobilesdk_app_id": "1:123456789012:android:1234567890123456", "android_client_info": {"package_name": "com.whitedra.vpn"}}, "oauth_client": [], "api_key": [{"current_key": "AIzaSyDummyKey"}], "services": {"analytics_service": {"status": 1}}}]
           }'
           echo "$JSON_CONTENT" > app/google-services.json
           echo "$JSON_CONTENT" > app/src/debug/google-services.json
@@ -54,9 +49,15 @@ jobs:
       - name: Grant Exec Permissions
         run: chmod +x gradlew || true
 
-      # ساخت APK با رد کردن تست‌ها، لینت و تایید امضای دیباگ
+      # ساخت APK همراه با تزریق مشخصات کی‌استور
       - name: Build Debug APK
-        run: ./gradlew assembleDebug -x test -x lint -x validateSigningDebug -Pandroid.lint.abortOnError=false --stacktrace --no-daemon
+        run: |
+          ./gradlew assembleDebug \
+            -Pandroid.injected.signing.store.file=$HOME/.android/debug.keystore \
+            -Pandroid.injected.signing.store.password=android \
+            -Pandroid.injected.signing.key.alias=androiddebugkey \
+            -Pandroid.injected.signing.key.password=android \
+            -x test -x lint -x validateSigningDebug -Pandroid.lint.abortOnError=false --no-daemon
 
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
