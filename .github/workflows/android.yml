@@ -35,11 +35,17 @@ jobs:
           mkdir -p ~/.android
           keytool -genkey -v -keystore ~/.android/debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US" || true
 
-      # تزریق فایل JSON با پشتیبانی همزمان از هر دو نام پکیج
-      - name: Inject Dummy google-services.json
+      # استخراج خودکار نام پکیج واقعی پروژه و تزریق فایل google-services
+      - name: Inject Dynamic google-services.json
         run: |
+          PKG=$(grep -oP '(namespace|applicationId)\s*=\s*"\K[^"]+' app/build.gradle.kts 2>/dev/null | head -n 1)
+          if [ -z "$PKG" ]; then
+            PKG="com.whitedra.vpn"
+          fi
+          echo "Detected Package Name: $PKG"
+
           mkdir -p app app/src/debug app/src/main
-          cat << 'EOF' > app/google-services.json
+          cat << EOF > app/google-services.json
           {
             "project_info": {
               "project_number": "123456789012",
@@ -50,7 +56,7 @@ jobs:
               {
                 "client_info": {
                   "mobilesdk_app_id": "1:123456789012:android:1234567890123456",
-                  "android_client_info": { "package_name": "com.whitedra.vpn" }
+                  "android_client_info": { "package_name": "$PKG" }
                 },
                 "oauth_client": [],
                 "api_key": [{ "current_key": "AIzaSyDummyKey" }],
@@ -59,7 +65,7 @@ jobs:
               {
                 "client_info": {
                   "mobilesdk_app_id": "1:123456789012:android:6543210987654321",
-                  "android_client_info": { "package_name": "com.whitedra.vpn.debug" }
+                  "android_client_info": { "package_name": "${PKG}.debug" }
                 },
                 "oauth_client": [],
                 "api_key": [{ "current_key": "AIzaSyDummyKey" }],
@@ -75,7 +81,7 @@ jobs:
       - name: Grant Exec Permissions
         run: chmod +x gradlew || true
 
-      # کامپایل همراه با رد کردن اجباری پردازش Google Services
+      # ساخت کامل بدون غیرفعال کردن processDebugGoogleServices
       - name: Build Debug APK
         run: |
           ./gradlew assembleDebug \
@@ -83,7 +89,7 @@ jobs:
             -Pandroid.injected.signing.store.password=android \
             -Pandroid.injected.signing.key.alias=androiddebugkey \
             -Pandroid.injected.signing.key.password=android \
-            -x test -x lint -x validateSigningDebug -x processDebugGoogleServices -Pandroid.lint.abortOnError=false --no-daemon
+            -x test -x lint -Pandroid.lint.abortOnError=false --no-daemon
 
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
