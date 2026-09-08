@@ -157,7 +157,7 @@ class MainActivity : Activity() {
     private var activeAppTabPosition: Int = 1
 
     private lateinit var connectionOrb: ConnectionOrbView
-    private lateinit var statusDot: View
+    private lateinit var statusDot: StatusDotIndicatorView
     private lateinit var statusText: TextView
     private lateinit var publicServerNotice: TextView
     private lateinit var connectionDetailsText: TextView
@@ -1549,12 +1549,7 @@ class MainActivity : Activity() {
                 true
             }
         }
-        statusDot = View(this).apply {
-            background = GradientDrawable().apply {
-                shape = GradientDrawable.OVAL
-                setColor(palette.neutral)
-            }
-        }
+        statusDot = StatusDotIndicatorView(this)
         statusText = TextView(this).apply {
             gravity = Gravity.CENTER
             layoutDirection = View.LAYOUT_DIRECTION_LOCALE
@@ -6793,15 +6788,8 @@ class MainActivity : Activity() {
         connectionOrb.isEnabled = true
         connectionOrb.isClickable = buttonModel.isEnabled()
         connectionOrb.contentDescription = getString(buttonModel.labelRes())
-        // Update status dot color based on state
-        (statusDot.background as? GradientDrawable)?.setColor(
-            when (state) {
-                VpnState.Started -> TEAL
-                VpnState.Starting, VpnState.Stopping -> AMBER
-                is VpnState.Error, VpnState.DailyLimitReached -> ERROR
-                VpnState.Stopped -> palette.neutral
-            }
-        )
+        // Update status dot with animated pulse/halo based on state
+        statusDot.setVpnState(state)
         statusText.text = getString(presentation.titleRes)
         statusText.setTextColor(TEXT_SECONDARY)
         timerText.setTextColor(if (state == VpnState.Started) TEXT_PRIMARY else TEXT_SECONDARY)
@@ -6821,8 +6809,38 @@ class MainActivity : Activity() {
             activeRuntimeSubscriptionId == SubscriptionStore.PUBLIC_SUBSCRIPTION_ID
         ) View.VISIBLE else View.GONE
         renderConnectionDetails(state)
-        refreshActionButton.visibility = if (state == VpnState.Started) View.VISIBLE else View.INVISIBLE
-        refreshActionButton.isEnabled = state == VpnState.Started
+        val shouldShowRefresh = state == VpnState.Started
+        if (shouldShowRefresh) {
+            if (refreshActionButton.visibility != View.VISIBLE) {
+                refreshActionButton.visibility = View.VISIBLE
+                refreshActionButton.alpha = 0f
+                refreshActionButton.scaleX = 0.85f
+                refreshActionButton.scaleY = 0.85f
+                refreshActionButton.animate()
+                    .alpha(1f)
+                    .scaleX(1f)
+                    .scaleY(1f)
+                    .setDuration(260L)
+                    .setInterpolator(android.view.animation.PathInterpolator(0.18f, 1.25f, 0.35f, 1f))
+                    .start()
+            }
+        } else {
+            if (refreshActionButton.visibility == View.VISIBLE) {
+                refreshActionButton.animate()
+                    .alpha(0f)
+                    .scaleX(0.85f)
+                    .scaleY(0.85f)
+                    .setDuration(180L)
+                    .setInterpolator(android.view.animation.PathInterpolator(0.2f, 0f, 0.2f, 1f))
+                    .withEndAction {
+                        refreshActionButton.visibility = View.INVISIBLE
+                    }
+                    .start()
+            } else {
+                refreshActionButton.visibility = View.INVISIBLE
+            }
+        }
+        refreshActionButton.isEnabled = shouldShowRefresh
         refreshActionButton.contentDescription = getString(R.string.action_reconnect)
         // Light green background with dark green text
         val lightGreenBg = if (palette.isDark) withAlpha(0x3FBE90, 40) else withAlpha(0x007E50, 30)

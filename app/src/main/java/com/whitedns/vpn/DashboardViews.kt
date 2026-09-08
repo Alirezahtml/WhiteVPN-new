@@ -634,6 +634,103 @@ class StatusIndicatorView(context: Context) : View(context) {
 }
 
 /**
+ * Animated live status dot with soft outer breathing halo for active/connecting VPN state.
+ */
+class StatusDotIndicatorView(context: Context) : View(context) {
+    private val palette = WhiteDnsDesignTokens.forContext(context)
+    private var state: VpnState = VpnState.Stopped
+    private var dotColor: Int = palette.neutral
+    private var pulseFraction: Float = 0f
+    private var pulseAnimator: ValueAnimator? = null
+
+    private val dotPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.FILL
+    }
+    private val haloPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.FILL
+    }
+
+    init {
+        setLayerType(LAYER_TYPE_HARDWARE, null)
+    }
+
+    fun setVpnState(newState: VpnState) {
+        if (state == newState) return
+        state = newState
+        dotColor = when (newState) {
+            VpnState.Started -> palette.teal
+            VpnState.Starting, VpnState.Stopping -> palette.amber
+            is VpnState.Error, VpnState.DailyLimitReached -> palette.red
+            VpnState.Stopped -> palette.neutral
+        }
+
+        val shouldPulse = newState == VpnState.Started || newState == VpnState.Starting || newState == VpnState.Stopping
+        if (shouldPulse) {
+            startPulse()
+        } else {
+            stopPulse()
+        }
+        invalidate()
+    }
+
+    private fun startPulse() {
+        if (pulseAnimator?.isRunning == true) return
+        pulseAnimator = ValueAnimator.ofFloat(0f, 1f).apply {
+            duration = if (state == VpnState.Started) 1800L else 900L
+            repeatCount = ValueAnimator.INFINITE
+            repeatMode = ValueAnimator.RESTART
+            interpolator = PathInterpolator(0.25f, 0.1f, 0.25f, 1f)
+            addUpdateListener {
+                pulseFraction = it.animatedValue as Float
+                invalidate()
+            }
+            start()
+        }
+    }
+
+    private fun stopPulse() {
+        pulseAnimator?.cancel()
+        pulseAnimator = null
+        pulseFraction = 0f
+        invalidate()
+    }
+
+    override fun onDraw(canvas: Canvas) {
+        val cx = width / 2f
+        val cy = height / 2f
+        val baseRadius = dp(3.5f)
+
+        // Draw animated soft expanding halo when active or connecting
+        if (pulseAnimator?.isRunning == true && pulseFraction > 0f) {
+            val maxHaloRadius = dp(8f)
+            val currentHaloRadius = baseRadius + pulseFraction * (maxHaloRadius - baseRadius)
+            val haloAlpha = ((1f - pulseFraction) * 0.45f * 255).toInt().coerceIn(0, 255)
+            haloPaint.color = (dotColor and 0x00FFFFFF) or (haloAlpha shl 24)
+            canvas.drawCircle(cx, cy, currentHaloRadius, haloPaint)
+        }
+
+        // Draw center dot
+        dotPaint.color = dotColor
+        canvas.drawCircle(cx, cy, baseRadius, dotPaint)
+    }
+
+    override fun onAttachedToWindow() {
+        super.onAttachedToWindow()
+        val shouldPulse = state == VpnState.Started || state == VpnState.Starting || state == VpnState.Stopping
+        if (shouldPulse && (pulseAnimator == null || !pulseAnimator!!.isRunning)) {
+            startPulse()
+        }
+    }
+
+    override fun onDetachedFromWindow() {
+        stopPulse()
+        super.onDetachedFromWindow()
+    }
+
+    private fun dp(value: Float): Float = value * resources.displayMetrics.density
+}
+
+/**
  * Animated arrow icon that pulses between muted and accent colors.
  * Used for download/upload indicators.
  */
